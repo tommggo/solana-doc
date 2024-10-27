@@ -4,6 +4,15 @@
 - 无抽象层: 使用SPL直接操作时，开发者需要手动处理账户验证和内存管理等内容，相较于Anchor的高级抽象，SPL 更接近底层操作
 - You can find the full list of Token Program instructions *[here](https://github.com/solana-labs/solana-program-library/blob/b1c44c171bc95e6ee74af12365cb9cbab68be76c/token/program/src/instruction.rs)*.
 
+## SPL Token Program
+是 Solana 区块链上的一个内置智能合约，专门用于创建、管理和转移代币（Token）。它为开发者提供了一套标准化的功能，用于操作可替代性代币（类似于以太坊上的 ERC-20 代币）。SPL（Solana Program Library）是 Solana 官方提供的一组程序库，包含各种实用的智能合约，其中 SPL Token Program 就是最常用的一个，专门用于代币的生命周期管理。
+SPL Token Program 的特点：
+- 标准化：SPL Token Program 是一个已经部署在 Solana 网络上的通用智能合约，提供了一整套标准操作，如创建代币、铸造代币、转账代币、冻结代币等。这意味着开发者可以直接调用这些标准功能，而无需自己实现这些逻辑。
+- 高效性：由于 SPL Token Program 是由 Solana 官方开发和优化的，它在操作上非常高效，适用于代币的大规模转账和管理。
+- 安全性：SPL Token Program 经过了广泛的审计和测试，确保了其安全性。开发者在构建基于代币的应用时，可以降低因智能合约代码错误而导致的安全问题。
+
+开发者通常会使用 SPL Token Program 创建和管理代币，并通过自定义智能合约实现特定的业务需求，如治理代币、DeFi 协议等。这两者可以结合使用，共同构建复杂的去中心化应用。
+
 ### Solana Account Model
 On Solana, all data is stored in what are referred to as "accounts”. The way data is organized on Solana resembles a key-value store, where each entry in the database is called an "account".
 
@@ -209,8 +218,9 @@ pub account: AccountType
 ```
 
 `#[account]`
+是一个 属性（attribute），它用来修饰Solana Anchor框架中的账户字段。
 - 作用: 定义一个账户的数据结构，指定其存储的数据格式。
-- 用法: 在结构体上方使用，以便 Anchor 可以自动处理该账户的初始化和存储。
+- 用法: 当你定义一个结构体中的字段代表一个具体的Solana账户时，你可以使用 #[account] 来明确这个字段代表一个帐户，并且可以对它的初始化和验证进行控制。
 ```
 #[account]
 pub struct MyAccount {
@@ -263,6 +273,61 @@ pub fn my_instruction(ctx: Context<MyContext>, amount: u64) -> Result<()> {
     // 处理逻辑
 }
 ```
+### Context
+指Solana程序中的上下文对象，它封装了执行指令时所需的账户信息、程序状态和执行环境。主要组成部分：
+- Accounts Struct: 在 #[derive(Accounts)] 宏定义的结构体中，Context 将所有必要的账户信息汇总为一个整体。这些账户被明确标记为可变 (mut) 或只读，从而确定这些账户在指令执行过程中是被修改的还是只被读取。
+- Signer 权限: Context 对象还会检查哪些账户必须是签名者（Signer），即这些账户是否需要为交易签名。在Solana中，所有修改账户状态的操作都需要签名者的授权。
+- Program: 在执行指令时，Context 还会提供与当前运行的智能合约相关联的程序对象，确保操作是在正确的上下文中执行的。
+
+假设你有一个转账的操作，你会通过 Context 获取发起者、接收者的账户信息，并执行转账操作。代码示例如下：
+```
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct TransferContext<'info> {
+    #[account(mut)]
+    pub from: Signer<'info>, // 发起转账的人
+    #[account(mut)]
+    pub to: Account<'info, TokenAccount>, // 接收方账户
+    pub system_program: Program<'info, System>, // 系统程序
+}
+
+pub fn transfer(ctx: Context<TransferContext>, amount: u64) -> Result<()> {
+    // 从 'from' 账户转账到 'to' 账户
+}
+
+```
+在这里，Context<TransferContext> 封装了所有账户的状态和系统程序的上下文，确保在执行转账时能够访问所需的账户，并根据需要对其进行修改。
+作用：
+- 账户管理：Context 的核心功能是确保在处理合约逻辑时，程序能够有效、正确地管理和使用账户信息。
+- 权限控制：通过 Signer，Context 还可以确保只有合法的签名者才能修改账户。
+- 简化合约编写：使用 Context 能够简化复杂的账户管理操作，开发者只需定义好结构体，Anchor会自动处理账户的序列化和权限验证。
+
+### Cross-Program Invocations（CPIs）
+是 Solana 区块链中的一种机制，它允许一个程序（智能合约）调用另一个程序。这种设计使得不同的程序可以相互协作和复用代码逻辑，从而提高效率和灵活性。
+核心概念
+- 跨程序调用: CPI 是指当前正在执行的程序可以调用另一个在 Solana 上的已部署程序。比如，某个自定义程序可以调用 SPL Token 程序来进行代币转账，而不需要重新实现代币转账的逻辑。
+- 安全性: CPI 确保被调用的程序能够通过提供特定的账户和签名来验证调用者的权限，保证合约间的调用安全。
+- 账户传递: CPI 的核心在于账户信息的传递。调用一个外部程序时，必须提供它所需的账户上下文，以确保能够正确执行调用。通过 CpiContext，调用者可以把这些账户传递给目标程序。
+
+
+
+#### CpiContext
+在跨程序调用时使用，负责提供外部程序所需的账户和执行环境。
+```
+let cpi_accounts = Transfer {
+    from: ctx.accounts.from.to_account_info(),
+    to: ctx.accounts.to.to_account_info(),
+    authority: ctx.accounts.authority.to_account_info(),
+};
+let cpi_program = ctx.accounts.token_program.to_account_info();
+let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+token::transfer(cpi_ctx, amount)?;
+
+```
+在这个例子中，CpiContext 被用来调用外部的 token::transfer 函数（属于 SPL Token Program）。CpiContext 封装了目标程序所需的账户和权限。
+
 
 ## Solana CLI
 与 Solana 区块链进行交互的命令行界面工具。主要功能：
@@ -305,3 +370,5 @@ pub fn my_instruction(ctx: Context<MyContext>, amount: u64) -> Result<()> {
        - 部署并与之交互。
     2. 优点：简化开发过程，特别是如果你要构建更复杂的应用。
     3. 适用场景：复杂的 DeFi、DAO、NFT 项目开发。
+
+
