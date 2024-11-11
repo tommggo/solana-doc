@@ -10,7 +10,94 @@ SPL Token Program 的特点：
 - 标准化：SPL Token Program 是一个已经部署在 Solana 网络上的通用智能合约，提供了一整套标准操作，如创建代币、铸造代币、转账代币、冻结代币等。这意味着开发者可以直接调用这些标准功能，而无需自己实现这些逻辑。
 - 高效性：由于 SPL Token Program 是由 Solana 官方开发和优化的，它在操作上非常高效，适用于代币的大规模转账和管理。
 - 安全性：SPL Token Program 经过了广泛的审计和测试，确保了其安全性。开发者在构建基于代币的应用时，可以降低因智能合约代码错误而导致的安全问题。
+1. 基本功能:
+```
+// Token Program 的主要功能示例
+impl TokenProgram {
+    // 1. 创建代币
+    fn create_mint(
+        mint_authority: Pubkey,    // 铸币权限
+        decimals: u8,              // 精度
+        freeze_authority: Option<Pubkey>,  // 冻结权限
+    ) -> Mint;
 
+    // 2. 创建代币账户
+    fn create_account(
+        owner: Pubkey,     // 账户所有者
+        mint: Pubkey,      // 代币类型
+    ) -> TokenAccount;
+
+    // 3. 铸造代币
+    fn mint_to(
+        mint: Pubkey,      // 代币类型
+        account: Pubkey,   // 接收账户
+        amount: u64,       // 数量
+    );
+
+    // 4. 转账代币
+    fn transfer(
+        source: Pubkey,    // 源账户
+        destination: Pubkey,  // 目标账户
+        amount: u64,       // 数量
+    );
+}
+```
+2. 主要用途:
+创建新代币（Mint Account）
+管理代币账户（Token Account）
+执行代币转账
+管理代币权限（铸币、冻结等）
+3. 账户类型:
+```
+// Token Program 管理的账户类型
+struct MintAccount {
+    mint_authority: Option<Pubkey>,  // 铸币权限
+    supply: u64,                     // 总供应量
+    decimals: u8,                    // 精度
+    freeze_authority: Option<Pubkey>, // 冻结权限
+}
+
+struct TokenAccount {
+    mint: Pubkey,         // 代币类型
+    owner: Pubkey,        // 账户所有者
+    amount: u64,          // 余额
+    delegate: Option<Pubkey>,  // 委托
+    state: AccountState,  // 账户状态（正常/冻结）
+}
+```
+4. 常见操作实例
+```
+// 1. 创建代币
+let create_mint_ix = spl_token::instruction::initialize_mint(
+    &spl_token::id(),
+    &mint_pubkey,
+    &authority,
+    Some(&freeze_authority),
+    6,  // 精度
+)?;
+
+// 2. 创建代币账户
+let create_account_ix = spl_token::instruction::initialize_account(
+    &spl_token::id(),
+    &account_pubkey,
+    &mint_pubkey,
+    &owner_pubkey,
+)?;
+
+// 3. 转账代币
+let transfer_ix = spl_token::instruction::transfer(
+    &spl_token::id(),
+    &source_pubkey,
+    &destination_pubkey,
+    &authority_pubkey,
+    &[],
+    amount,
+)?;
+```
+5. 程序地址
+```
+const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+```
 开发者通常会使用 SPL Token Program 创建和管理代币，并通过自定义智能合约实现特定的业务需求，如治理代币、DeFi 协议等。这两者可以结合使用，共同构建复杂的去中心化应用。
 
 ### Solana Account Model
@@ -168,6 +255,7 @@ Data accounts can store any arbitrary data as defined in the owner program's cod
 - 高级框架: Anchor 是一个用于简化Solana程序（智能合约）开发的高级框架。它通过提供声明式的宏、标准化模式和工具，抽象掉了许多与编写Solana程序相关的底层复杂性。
 - Rust 宏和语法: Anchor 使用Rust宏（如#[program]、#[derive(Accounts)] 和 #[account]）来管理程序账户的结构和验证，这使得Solana开发更加简洁和安全，降低了出错的几率。
 - CPI（跨程序调用）: Anchor 可以通过CPI轻松调用SPL程序。例如，使用Anchor时，你可以在不直接处理低级Solana API的情况下调用SPL Token或Token Metadata程序中的功能。
+
 ### 宏介绍
 `declare_id!`
 - 作用: 声明程序的唯一标识符（Program ID）。
@@ -303,13 +391,17 @@ pub fn transfer(ctx: Context<TransferContext>, amount: u64) -> Result<()> {
 - 权限控制：通过 Signer，Context 还可以确保只有合法的签名者才能修改账户。
 - 简化合约编写：使用 Context 能够简化复杂的账户管理操作，开发者只需定义好结构体，Anchor会自动处理账户的序列化和权限验证。
 
+### serialization & deserialization
+- 序列化（serialize）：将对象数据（如结构体、类）转化为一种标准的格式（如字节流或 JSON）以便传输或存储。序列化的结果可以存储在文件中、通过网络发送，或保存到数据库中。
+- 反序列化（deserialize）：将序列化后的数据重新转回原来的对象或数据结构，使程序能够再次访问和操作这些数据。反序列化的目的是恢复数据的结构和内容，以便应用程序处理。
+在 Rust 的 Account<'info, T> 中，反序列化发生在账户数据从 Solana 区块链的字节流读取并转换为指定的结构体 T 时。反之，当要更新链上账户时，结构体需要序列化，以便写入存储。
+
 ### Cross-Program Invocations（CPIs）
 是 Solana 区块链中的一种机制，它允许一个程序（智能合约）调用另一个程序。这种设计使得不同的程序可以相互协作和复用代码逻辑，从而提高效率和灵活性。
 核心概念
 - 跨程序调用: CPI 是指当前正在执行的程序可以调用另一个在 Solana 上的已部署程序。比如，某个自定义程序可以调用 SPL Token 程序来进行代币转账，而不需要重新实现代币转账的逻辑。
 - 安全性: CPI 确保被调用的程序能够通过提供特定的账户和签名来验证调用者的权限，保证合约间的调用安全。
 - 账户传递: CPI 的核心在于账户信息的传递。调用一个外部程序时，必须提供它所需的账户上下文，以确保能够正确执行调用。通过 CpiContext，调用者可以把这些账户传递给目标程序。
-
 
 
 #### CpiContext
@@ -327,6 +419,8 @@ token::transfer(cpi_ctx, amount)?;
 
 ```
 在这个例子中，CpiContext 被用来调用外部的 token::transfer 函数（属于 SPL Token Program）。CpiContext 封装了目标程序所需的账户和权限。
+
+#### Program Derived Addresses
 
 
 ## Solana CLI
